@@ -201,6 +201,9 @@ struct LibraryEntry: Codable, Identifiable {
     /// D3D9 anisotropic filtering limit (DXMT_D9_ANISO_LIMIT: 1, 2, 4 or 8);
     /// nil = the application's own choice.
     var anisotropyLimit: Int?
+    /// Per-game Direct3D 12 runtime gate. Optional so existing library JSON stays
+    /// compatible; nil leaves the global madeira.cfg choice untouched.
+    var d3d12: Bool?
     /// A Steam game (SteamGames.swift): Madeira Dock starts it by this App ID
     /// through Valve's client, with Steam's default launch option.
     /// `relativePath` is then its install folder, relative to drive_c.
@@ -282,6 +285,14 @@ struct LibraryEntry: Codable, Identifiable {
         // WineProcessBridge takes at most 64 arguments in 4 KB.
         guard launchArguments.utf8.count < 4096 else { throw LibraryError.message("The complete launch command is too long.") }
         guard !quoted, tokens <= 64 else { throw LibraryError.message("Use balanced double quotes and at most 64 launch arguments in total.") }
+    }
+
+    /// Apply config-file gates that must be visible before the launch sequence
+    /// allocates the JIT pool or runs the in-app D3D12 canary.
+    func applyPreflightConfig() {
+        guard let d3d12 else { return }
+        _ = MadeiraConfig.set("d3d12", d3d12 ? "1" : nil)
+        LogStore.shared.log("[launch-route] Direct3D 12 \(d3d12 ? "ON" : "OFF") before runtime gate")
     }
 
     /// Runs on the launch worker, before the JIT pool is taken.
@@ -2311,6 +2322,10 @@ struct LibraryDetail: View {
                         Text("Application default").tag(0)
                         ForEach([1, 2, 4, 8], id: \.self) { Text("Up to \($0)×").tag($0) }
                     }
+                    Toggle("Direct3D 12", isOn: Binding(
+                        get: { entry.d3d12 ?? false },
+                        set: { entry.d3d12 = $0 }
+                    ))
                     // Fastsync-only switches: shown for every game, usable only while
                     // Settings › Sync engine is Fastsync.
                     Group {
@@ -2328,7 +2343,7 @@ struct LibraryDetail: View {
                         TextField("Launch arguments", text: $entry.arguments, axis: .vertical).autocorrectionDisabled().textInputAutocapitalization(.never)
                     }
                 } header: { Text("Compatibility & performance") } footer: {
-                    Text("Reduced-precision x87 can make older games faster at some cost in accuracy; it is off by default. With Fastsync, fast synchronization (on by default) handles events without a server round trip, and fast semaphore waits (off by default) does the same for semaphores. Settings apply to the next launch; a precision change may still require restarting Madeira.")
+                    Text("Direct3D 12 enables Madeira's D3D12 runtime for this game before the runtime gate and shader-converter canary run. Reduced-precision x87 can make older games faster at some cost in accuracy; it is off by default. With Fastsync, fast synchronization (on by default) handles events without a server round trip, and fast semaphore waits (off by default) does the same for semaphores. Settings apply to the next launch.")
                 }
                 Section("On screen") {
                     Toggle("Performance overlay", isOn: $entry.performance)
