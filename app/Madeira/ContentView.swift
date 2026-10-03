@@ -2337,6 +2337,11 @@ struct ContentView: View {
         // Steam downloads wait for the session, and the app's own Steam connection closes
         // before Valve's client signs in with the same account (SteamOwnedLibrary).
         SteamOwnedLibrary.shared.sessionChanged(active: true)
+
+        // Per-game D3D12 must be committed before madeira.cfg is logged and,
+        // crucially, before the in-app D3D12 runtime/canary gate is evaluated.
+        profile?.applyPreflightConfig()
+
         /* ml1095: one config file. Written once from any legacy madeira-*.txt. */
         MadeiraConfig.migrateLegacy { self.logStore.log($0) }
         MadeiraConfig.deleteLegacyFiles { self.logStore.log($0) }   /* ml1096: the old files go once the cfg exists */
